@@ -32,8 +32,8 @@ TYPE_VOID   : 'Void';
 ARROW       : '->';
 PLUS_ASSIGN : '+=';
 MINUS_ASSIGN: '-=';
-EQ          : '==';
-NEQ         : '!=';
+EQUAL       : '==';
+NOT_EQUAL   : '!=';
 LE          : '<=';
 GE          : '>=';
 AND         : '&&';
@@ -63,9 +63,9 @@ COLON       : ':';
 SEMICOL     : ';';
 QUESTION    : '?';
 
-ID      : [a-zA-Z_][a-zA-Z0-9_]*;
+IDENTIFIER  : [a-zA-Z_][a-zA-Z0-9_]*;
 
-FLOAT   : [0-9]+ '.' [0-9]+;
+DOUBLE  : [0-9]+ '.' [0-9]+;
 INT     : [0-9]+;
 
 STRING

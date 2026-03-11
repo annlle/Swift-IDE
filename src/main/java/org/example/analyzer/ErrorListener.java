@@ -6,7 +6,7 @@ import org.antlr.v4.runtime.Recognizer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LexerErrorListener extends BaseErrorListener {
+public class ErrorListener extends BaseErrorListener {
     private final List<String> errorMessages = new ArrayList<>();
 
     @Override

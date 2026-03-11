@@ -20,7 +20,7 @@ public class SwiftLexicalAnalyzer {
         CharStream stream = CharStreams.fromString(input);
         SwiftLexer lexer = new SwiftLexer(stream);
 
-        LexerErrorListener errorListener = new LexerErrorListener();
+        ErrorListener errorListener = new ErrorListener();
         lexer.removeErrorListeners();
         lexer.addErrorListener(errorListener);
 
@@ -38,7 +38,8 @@ public class SwiftLexicalAnalyzer {
                     diagnostics.add(new Diagnostic(
                             Diagnostic.Severity.ERROR,
                             "Unclosed line",
-                            t.getLine()
+                            t.getLine(),
+                            t.getCharPositionInLine()
                     ));
                     break;
 
@@ -46,7 +47,8 @@ public class SwiftLexicalAnalyzer {
                     diagnostics.add(new Diagnostic(
                             Diagnostic.Severity.ERROR,
                             "Invalid character: " + t.getText(),
-                            t.getLine()
+                            t.getLine(),
+                            t.getCharPositionInLine()
                     ));
                     break;
 
@@ -54,7 +56,8 @@ public class SwiftLexicalAnalyzer {
                     diagnostics.add(new Diagnostic(
                             Diagnostic.Severity.ERROR,
                             "Invalid format of number: " + t.getText(),
-                            t.getLine()
+                            t.getLine(),
+                            t.getCharPositionInLine()
                     ));
                     break;
             }
@@ -65,6 +68,7 @@ public class SwiftLexicalAnalyzer {
                 diagnostics.add(new Diagnostic(
                         Diagnostic.Severity.ERROR,
                         msg,
+                        -1,
                         -1
                 ));
             }
