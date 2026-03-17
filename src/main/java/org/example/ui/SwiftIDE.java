@@ -3,12 +3,17 @@ package org.example.ui;
 import org.example.ast.AstNode;
 import org.example.analyzer.SwiftLexicalAnalyzer;
 import org.example.analyzer.SwiftSyntaxAnalyzer;
+import org.example.analyzer.SemanticAnalyzer;
+import org.example.ir.IRGenerator;
+import org.example.ir.IRInstruction;
+
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.io.File;
 import java.nio.file.Files;
+import java.util.List;
 
 public class SwiftIDE extends JFrame {
 
@@ -16,8 +21,8 @@ public class SwiftIDE extends JFrame {
     private final JTextArea outputArea;
 
     public SwiftIDE() {
-        setTitle("Swift Lexical & Syntax Analyzer");
-        setSize(1200, 800);
+        setTitle("Swift IDE - Lexical, Syntax & Semantic Analyzer");
+        setSize(1200, 850);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -31,114 +36,110 @@ public class SwiftIDE extends JFrame {
 
         codeArea = new JTextArea();
         codeArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
-
         JScrollPane codeScroll = new JScrollPane(codeArea);
         LineNumberView lineNumbers = new LineNumberView(codeArea);
         codeScroll.setRowHeaderView(lineNumbers);
 
-        codeArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            private void update() {
-                lineNumbers.revalidate();
-                lineNumbers.repaint();
-            }
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { update(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { update(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { update(); }
-        });
-
         codeArea.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { lineNumbers.repaint(); }
-            public void removeUpdate(DocumentEvent e) { lineNumbers.repaint(); }
-            public void changedUpdate(DocumentEvent e) { lineNumbers.repaint(); }
+            private void update() { lineNumbers.revalidate(); lineNumbers.repaint(); }
+            public void insertUpdate(DocumentEvent e) { update(); }
+            public void removeUpdate(DocumentEvent e) { update(); }
+            public void changedUpdate(DocumentEvent e) { update(); }
         });
 
-        outputArea = new JTextArea(4, 0);
-        outputArea.setForeground(Color.RED);
+        outputArea = new JTextArea(10, 0);
         outputArea.setEditable(false);
         outputArea.setFont(new Font("Monospaced", Font.BOLD, 13));
-
         JScrollPane outputScroll = new JScrollPane(outputArea);
         outputScroll.setBorder(BorderFactory.createTitledBorder("Analysis Results"));
 
         JSplitPane verticalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, codeScroll, outputScroll);
-        verticalSplit.setResizeWeight(0.85);
-        verticalSplit.setDividerLocation(550);
+        verticalSplit.setResizeWeight(0.7);
+        verticalSplit.setDividerLocation(500);
 
-        JPanel buttonPanel = new JPanel(new GridLayout(1, 2, 0, 0));
-
-        JButton lexBtn = new JButton("Run lexical analysis");
-        lexBtn.addActionListener(_ -> runLexicalAnalysis());
-
-        JButton synBtn = new JButton("Run syntax analysis");
-        synBtn.setBackground(new Color(34,139,34));
-        synBtn.setForeground(Color.WHITE);
-        synBtn.addActionListener(_ -> runSyntaxAnalysis());
-
-        buttonPanel.add(lexBtn);
-        buttonPanel.add(synBtn);
+        JPanel buttonPanel = getButtonPanel();
 
         add(verticalSplit, BorderLayout.CENTER);
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    private static class LineNumberView extends JComponent {
-        private final JTextArea textArea;
+    private JPanel getButtonPanel() {
+        JPanel panel = new JPanel(new GridLayout(1, 3, 5, 5));
 
-        public LineNumberView(JTextArea textArea) {
-            this.textArea = textArea;
-            setBackground(new Color(240, 240, 240));
-            setForeground(new Color(128, 128, 128));
-            setFont(textArea.getFont());
-        }
+        JButton lexBtn = new JButton("Run lexical analysis");
+        lexBtn.addActionListener(_ -> runLexicalAnalysis());
 
-        @Override
-        public Dimension getPreferredSize() {
-            FontMetrics metrics = getFontMetrics(getFont());
-            int lineCount = Math.max(textArea.getLineCount(), 1);
-            int digits = String.valueOf(lineCount).length();
-            int width = (digits * metrics.charWidth('0')) + 15;
+        JButton synBtn = new JButton("Run syntax analysis");
+        synBtn.setBackground(new Color(34, 139, 34));
+        synBtn.setForeground(Color.WHITE);
+        synBtn.addActionListener(_ -> runSyntaxAnalysis());
 
-            return new Dimension(width, textArea.getHeight());
-        }
+        JButton semBtn = new JButton("Run semantic analysis");
+        semBtn.setBackground(new Color(70, 130, 180));
+        semBtn.setForeground(Color.WHITE);
+        semBtn.addActionListener(_ -> runSemanticAnalysis());
 
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            Graphics2D g2 = (Graphics2D) g;
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            FontMetrics metrics = getFontMetrics(getFont());
-            int lineHeight = metrics.getHeight();
-            int lineCount = textArea.getLineCount();
-
-            g2.setColor(getBackground());
-            g2.fillRect(0, 0, getWidth(), getHeight());
-
-            g2.setColor(Color.LIGHT_GRAY);
-            g2.drawLine(getWidth() - 1, 0, getWidth() - 1, getHeight());
-
-            g2.setColor(getForeground());
-            int y = metrics.getAscent() + textArea.getInsets().top;
-
-            for (int i = 1; i <= lineCount; i++) {
-                String label = String.valueOf(i);
-                int labelWidth = metrics.stringWidth(label);
-                g2.drawString(label, getWidth() - labelWidth - 8, y);
-                y += lineHeight;
-            }
-        }
+        panel.add(lexBtn);
+        panel.add(synBtn);
+        panel.add(semBtn);
+        return panel;
     }
 
-    private void openFile() {
-        JFileChooser fileChooser = new JFileChooser();
-        int result = fileChooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            File selectedFile = fileChooser.getSelectedFile();
-            try {
-                String content = Files.readString(selectedFile.toPath());
-                codeArea.setText(content);
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Error reading file: " + ex.getMessage());
+    private void runSemanticAnalysis() {
+        outputArea.setText("");
+        String code = codeArea.getText();
+        if (code.isEmpty()) return;
+
+        SwiftSyntaxAnalyzer syntaxAnalyzer = new SwiftSyntaxAnalyzer();
+        SwiftSyntaxAnalyzer.SyntaxResult syntaxResult = syntaxAnalyzer.analyze(code);
+
+        if (!syntaxResult.errors.isEmpty()) {
+            outputArea.setForeground(Color.RED);
+            outputArea.setText("Cannot run semantic analysis: Syntax errors found!\n");
+            for (String err : syntaxResult.errors) outputArea.append(err + "\n");
+            return;
+        }
+
+        if (syntaxResult.ast != null) {
+            SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
+            syntaxResult.ast.accept(semanticAnalyzer);
+
+            boolean hasErrors = !semanticAnalyzer.getErrors().isEmpty();
+            boolean hasWarnings = !semanticAnalyzer.getWarnings().isEmpty();
+
+            if(hasErrors) {
+                outputArea.setForeground(Color.RED);
+                outputArea.append("Semantic errors found:\n");
+                for(String err : semanticAnalyzer.getErrors()) {
+                    outputArea.append(err + "\n");
+                }
+            }
+
+            if(hasWarnings) {
+                outputArea.setForeground(hasErrors ? Color.RED : Color.ORANGE);
+                outputArea.append("Semantic warnings found:\n");
+
+                for (String warn : semanticAnalyzer.getWarnings()){
+                    outputArea.append(warn + "\n");
+                }
+            }
+
+            if(!hasErrors) {
+                outputArea.setForeground(new Color(0,128,0));
+                outputArea.append("Semantic analysis completed successfully.\n");
+
+                IRGenerator irGenerator = new IRGenerator();
+                syntaxResult.ast.accept(irGenerator);
+
+                List<IRInstruction> irCode = irGenerator.getInstructions();
+                if(!irCode.isEmpty()) {
+                    outputArea.append("IR Code\n");
+                    for(IRInstruction instr : irCode) {
+                        outputArea.append(instr.toString() + "\n");
+                    }
+                } else {
+                    outputArea.append("\nNo IR instructions generated.\n");
+                }
             }
         }
     }
@@ -146,27 +147,17 @@ public class SwiftIDE extends JFrame {
     private void runLexicalAnalysis() {
         outputArea.setText("");
         outputArea.setForeground(Color.BLACK);
-
         String code = codeArea.getText();
         if (code.isEmpty()) return;
-
         SwiftLexicalAnalyzer analyzer = new SwiftLexicalAnalyzer();
         SwiftLexicalAnalyzer.Result result = analyzer.analyze(code);
-
         if (result.diagnostics.isEmpty()) {
             outputArea.setForeground(new Color(0, 128, 0));
-            outputArea.setText("Lexical analysis completed successfully. No errors found.");
+            outputArea.setText("Lexical analysis completed successfully.");
         } else {
             outputArea.setForeground(Color.RED);
-            outputArea.append("Lexical Errors Found:\n");
-
             for (var diag : result.diagnostics) {
-
-                int line = diag.getLine();
-                int column = diag.getColumn();
-                String message = diag.getMessage();
-
-                outputArea.append("Line " + line + ":" + column + " — " + message + "\n");
+                outputArea.append("Line " + diag.getLine() + ":" + diag.getColumn() + " — " + diag.getMessage() + "\n");
             }
         }
     }
@@ -176,48 +167,39 @@ public class SwiftIDE extends JFrame {
         outputArea.setForeground(Color.BLACK);
         String code = codeArea.getText();
         if (code.isEmpty()) return;
-
         SwiftSyntaxAnalyzer analyzer = new SwiftSyntaxAnalyzer();
         SwiftSyntaxAnalyzer.SyntaxResult result = analyzer.analyze(code);
-
-        if(!result.errors.isEmpty()) {
+        if (!result.errors.isEmpty()) {
             outputArea.setForeground(Color.RED);
-            outputArea.append("Syntax Errors Found:\n");
-            for (String err : result.errors) {
-                outputArea.append(err + "\n");
-            }
+            for (String err : result.errors) outputArea.append(err + "\n");
         } else if (result.ast != null) {
-            outputArea.setForeground(new Color(0,100,0));
-            outputArea.append("Syntax Tree (AST) formed successfully:");
-
+            outputArea.setForeground(new Color(0, 128, 0));
+            outputArea.append("Syntax Tree (AST) formed:\n");
             displayAst(result.ast);
         }
     }
 
     private void displayAst(AstNode node) {
         if (node == null) return;
-
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
         java.io.PrintStream ps = new java.io.PrintStream(baos);
-
         java.io.PrintStream oldOut = System.out;
         System.setOut(ps);
-
         node.print("");
-
         System.out.flush();
         System.setOut(oldOut);
-
         outputArea.append(baos.toString());
     }
 
-    public static void main(String[] args) {
-        if(args.length > 0) {
-            runConsoleMode(args[0]);
-        } else {
-            SwingUtilities.invokeLater(() -> new SwiftIDE().setVisible(true));
+    private void openFile() {
+        JFileChooser fileChooser = new JFileChooser();
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                codeArea.setText(Files.readString(fileChooser.getSelectedFile().toPath()));
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+            }
         }
-
     }
 
     private static void runConsoleMode(String filePath) {
@@ -228,15 +210,75 @@ public class SwiftIDE extends JFrame {
             SwiftSyntaxAnalyzer analyzer = new SwiftSyntaxAnalyzer();
             SwiftSyntaxAnalyzer.SyntaxResult result = analyzer.analyze(code);
 
-            if(!result.errors.isEmpty()) {
-                System.err.println("Errors found:");
+            if (!result.errors.isEmpty()) {
+                System.err.println("Syntax errors found:");
                 result.errors.forEach(System.err::println);
-            } else {
-                System.out.println("AST Result:");
-                result.ast.print("");
+                return;
             }
+
+            SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
+            result.ast.accept(semanticAnalyzer);
+
+            boolean hasErrors = !semanticAnalyzer.getErrors().isEmpty();
+            boolean hasWarnings = !semanticAnalyzer.getWarnings().isEmpty();
+
+            if (hasErrors) {
+                System.err.println("Semantic errors found:");
+                semanticAnalyzer.getErrors().forEach(System.err::println);
+            }
+
+            if (!hasErrors) {
+                if (hasWarnings) {
+                    System.out.println("Semantic warnings:");
+                    semanticAnalyzer.getWarnings().forEach(System.out::println);
+                }
+
+                IRGenerator irGenerator = new IRGenerator();
+                result.ast.accept(irGenerator);
+
+                System.out.println("IR Code:");
+                irGenerator.getInstructions().forEach(System.out::println);
+            }
+
         } catch (Exception e) {
-            System.err.println("File error:" + e.getMessage());
+            System.err.println("File error: " + e.getMessage());
+        }
+    }
+
+    public static void main(String[] args) {
+        if (args.length > 0) {
+            runConsoleMode(args[0]);
+        } else {
+            SwingUtilities.invokeLater(() -> new SwiftIDE().setVisible(true));
+        }
+    }
+
+    private static class LineNumberView extends JComponent {
+        private final JTextArea textArea;
+
+        public LineNumberView(JTextArea textArea) {
+            this.textArea = textArea;
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            FontMetrics metrics = getFontMetrics(textArea.getFont());
+            int lineCount = Math.max(textArea.getLineCount(), 1);
+            int width = (String.valueOf(lineCount).length() * metrics.charWidth('0')) + 15;
+            return new Dimension(width, textArea.getHeight());
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            g.setFont(textArea.getFont());
+            g.setColor(Color.LIGHT_GRAY);
+            FontMetrics metrics = g.getFontMetrics();
+            int lineHeight = metrics.getHeight();
+            int ascent = metrics.getAscent();
+            for (int i = 0; i < textArea.getLineCount(); i++) {
+                g.drawString(String.valueOf(i + 1), 5, (i * lineHeight) + ascent);
+            }
         }
     }
 }

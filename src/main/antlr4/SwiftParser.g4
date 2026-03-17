@@ -89,6 +89,8 @@ statement
     | forStatement
     | whileStatement
     | returnStatement
+    | breakStatement
+    | continueStatement
     | printStatement
     | expressionStatement
     | block
@@ -122,6 +124,14 @@ returnStatement
 
 expressionStatement
     : expression SEMICOL?
+    ;
+
+breakStatement
+    : BREAK SEMICOL?
+    ;
+
+continueStatement
+    : CONTINUE SEMICOL?
     ;
 
 // ================= EXPRESSIONS =================

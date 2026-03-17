@@ -63,6 +63,9 @@ COLON       : ':';
 SEMICOL     : ';';
 QUESTION    : '?';
 
+BREAK   : 'break';
+CONTINUE: 'continue';
+
 IDENTIFIER  : [a-zA-Z_][a-zA-Z0-9_]*;
 
 DOUBLE  : [0-9]+ '.' [0-9]+;

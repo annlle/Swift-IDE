@@ -1,14 +1,26 @@
 package org.example.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.example.SwiftParserBaseVisitor;
 import org.example.SwiftParser;
 import org.antlr.v4.runtime.tree.ParseTree;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
+
+    private <T extends AstNode> T setLoc(T node, ParserRuleContext ctx) {
+        if (ctx != null && ctx.getStart() != null) {
+            node.line = ctx.getStart().getLine();
+            node.column = ctx.getStart().getCharPositionInLine();
+        }
+        return node;
+    }
 
     @Override
     public AstNode visitProgram(SwiftParser.ProgramContext ctx) {
-        ProgramNode program = new ProgramNode();
+        ProgramNode program = setLoc(new ProgramNode(), ctx);
         for (int i = 0; i < ctx.getChildCount(); i++) {
             ParseTree child = ctx.getChild(i);
             if (!(child instanceof org.antlr.v4.runtime.tree.TerminalNode)) {
@@ -21,7 +33,7 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitImportDecl(SwiftParser.ImportDeclContext ctx) {
-        return new ImportNode(ctx.getText());
+        return setLoc(new ImportNode(ctx.getText()), ctx);
     }
 
     @Override
@@ -29,7 +41,7 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
         String name = ctx.IDENTIFIER().getText();
         String type = (ctx.typeAnnotation() != null) ? ctx.typeAnnotation().type().getText() : null;
         AstNode value = (ctx.expression() != null) ? visit(ctx.expression()) : null;
-        return new VariableDeclNode("var", name, type, value);
+        return setLoc(new VariableDeclNode("var", name, type, value), ctx);
     }
 
     @Override
@@ -37,12 +49,12 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
         String name = ctx.IDENTIFIER().getText();
         String type = (ctx.typeAnnotation() != null) ? ctx.typeAnnotation().type().getText() : null;
         AstNode value = (ctx.expression() != null) ? visit(ctx.expression()) : null;
-        return new VariableDeclNode("let", name, type, value);
+        return setLoc(new VariableDeclNode("let", name, type, value), ctx);
     }
 
     @Override
     public AstNode visitClassDecl(SwiftParser.ClassDeclContext ctx) {
-        ClassDeclNode classNode = new ClassDeclNode(ctx.IDENTIFIER().getText());
+        ClassDeclNode classNode = setLoc(new ClassDeclNode(ctx.IDENTIFIER().getText()), ctx);
         for (SwiftParser.DeclarationContext decl : ctx.declaration()) {
             AstNode node = visit(decl);
             if (node != null) classNode.members.add(node);
@@ -52,7 +64,7 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitInitDecl(SwiftParser.InitDeclContext ctx) {
-        InitDeclNode node = new InitDeclNode();
+        InitDeclNode node = setLoc(new InitDeclNode(), ctx);
         if (ctx.block() != null) {
             AstNode body = visit(ctx.block());
             if (body instanceof ProgramNode) {
@@ -66,19 +78,29 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
     public AstNode visitFunctionDecl(SwiftParser.FunctionDeclContext ctx) {
         String name = ctx.IDENTIFIER().getText();
         String retType = (ctx.returnType() != null) ? ctx.returnType().type().getText() : "Void";
+
         FunctionDeclNode node = new FunctionDeclNode(name, retType);
+
+        if (ctx.parameterList() != null) {
+            for (SwiftParser.ParameterContext pCtx : ctx.parameterList().parameter()) {
+                String pName = pCtx.IDENTIFIER().getText();
+                String pType = pCtx.type().getText();
+                node.parameters.add(new FunctionDeclNode.Parameter(pName, pType));
+            }
+        }
+
         if (ctx.block() != null) {
             AstNode body = visit(ctx.block());
             if (body instanceof ProgramNode) {
                 node.body.addAll(((ProgramNode) body).declarations);
             }
         }
-        return node;
+        return setLoc(node, ctx);
     }
 
     @Override
     public AstNode visitIfStatement(SwiftParser.IfStatementContext ctx) {
-        IfStatementNode node = new IfStatementNode();
+        IfStatementNode node = setLoc(new IfStatementNode(), ctx);
         node.condition = visit(ctx.expression());
 
         if (ctx.block(0) != null) {
@@ -97,19 +119,21 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitForStatement(SwiftParser.ForStatementContext ctx) {
-        ForStatementNode node = new ForStatementNode(ctx.IDENTIFIER().getText(), visit(ctx.expression()));
+        ForStatementNode node = setLoc(new ForStatementNode(ctx.IDENTIFIER().getText(), visit(ctx.expression())), ctx);
         node.body.add(visit(ctx.block()));
         return node;
     }
 
     @Override
     public AstNode visitWhileStatement(SwiftParser.WhileStatementContext ctx) {
-        // Додаємо підтримку While (якщо у вас є WhileStatementNode)
-        // Якщо немає, можна створити спеціальний вузол або використати BinaryOp для умови
-        AstNode condition = visit(ctx.expression());
-        AstNode body = visit(ctx.block());
-        return new BinaryOpNode(condition, "WHILE_LOOP", body);
-        // Порада: Краще створити окремий WhileStatementNode у вашому проекті
+        WhileStatementNode node = new WhileStatementNode();
+        node.condition = visit(ctx.expression());
+
+        AstNode bodyNode = visit(ctx.block());
+        if (bodyNode instanceof ProgramNode) {
+            node.body.addAll(((ProgramNode) bodyNode).declarations);
+        }
+        return setLoc(node, ctx);
     }
 
     @Override
@@ -118,7 +142,26 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
         AstNode left = visit(ctx.logicOr());
         String op = ctx.getChild(1).getText();
         AstNode right = visit(ctx.assignment());
-        return new BinaryOpNode(left, op, right);
+        return setLoc(new BinaryOpNode(left, op, right), ctx);
+    }
+
+    @Override
+    public AstNode visitReturnStatement(SwiftParser.ReturnStatementContext ctx) {
+        AstNode expr = null;
+        if (ctx.expression() != null) {
+            expr = visit(ctx.expression());
+        }
+        return setLoc(new ReturnNode(expr), ctx);
+    }
+
+    @Override
+    public AstNode visitBreakStatement(SwiftParser.BreakStatementContext ctx) {
+        return setLoc(new BreakNode(), ctx);
+    }
+
+    @Override
+    public AstNode visitContinueStatement(SwiftParser.ContinueStatementContext ctx) {
+        return setLoc(new ContinueNode(), ctx);
     }
 
     @Override
@@ -128,7 +171,7 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
         for (int i = 1; i < ctx.getChildCount(); i += 2) {
             String op = ctx.getChild(i).getText();
             AstNode right = visit(ctx.term((i + 1) / 2));
-            left = new BinaryOpNode(left, op, right);
+            left = setLoc(new BinaryOpNode(left, op, right), ctx);
         }
         return left;
     }
@@ -140,7 +183,7 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
         for (int i = 1; i < ctx.getChildCount(); i += 2) {
             String op = ctx.getChild(i).getText();
             AstNode right = visit(ctx.factor((i + 1) / 2));
-            left = new BinaryOpNode(left, op, right);
+            left = setLoc(new BinaryOpNode(left, op, right), ctx);
         }
         return left;
     }
@@ -152,21 +195,21 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
         for (int i = 1; i < ctx.getChildCount(); i += 2) {
             String op = ctx.getChild(i).getText();
             AstNode right = visit(ctx.unary((i + 1) / 2));
-            left = new BinaryOpNode(left, op, right);
+            left = setLoc(new BinaryOpNode(left, op, right), ctx);
         }
         return left;
     }
 
     @Override
     public AstNode visitPrimary(SwiftParser.PrimaryContext ctx) {
-        if (ctx.INT() != null) return new LiteralNode(ctx.INT().getText(), "INT");
-        if (ctx.DOUBLE() != null) return new LiteralNode(ctx.DOUBLE().getText(), "DOUBLE");
-        if (ctx.STRING() != null) return new LiteralNode(ctx.STRING().getText(), "STRING");
-        if (ctx.IDENTIFIER() != null) return new LiteralNode(ctx.IDENTIFIER().getText(), "IDENTIFIER");
-        if (ctx.TRUE() != null || ctx.FALSE() != null) return new LiteralNode(ctx.getText(), "BOOL");
-        if (ctx.arrayLiteral() != null) return new LiteralNode(ctx.arrayLiteral().getText(), "ARRAY");
-        if (ctx.dictionaryLiteral() != null) return new LiteralNode(ctx.dictionaryLiteral().getText(), "DICTIONARY");
-        if (ctx.SELF() != null) return new LiteralNode("self", "SELF");
+        if (ctx.INT() != null) return setLoc(new LiteralNode(ctx.INT().getText(), "INT"), ctx);
+        if (ctx.DOUBLE() != null) return setLoc(new LiteralNode(ctx.DOUBLE().getText(), "DOUBLE"), ctx);
+        if (ctx.STRING() != null) return setLoc(new LiteralNode(ctx.STRING().getText(), "STRING"), ctx);
+        if (ctx.IDENTIFIER() != null) return setLoc(new LiteralNode(ctx.IDENTIFIER().getText(), "IDENTIFIER"), ctx);
+        if (ctx.TRUE() != null || ctx.FALSE() != null) return setLoc(new LiteralNode(ctx.getText(), "BOOL"), ctx);
+        if (ctx.arrayLiteral() != null) return setLoc(new LiteralNode(ctx.arrayLiteral().getText(), "ARRAY"), ctx);
+        if (ctx.dictionaryLiteral() != null) return setLoc(new LiteralNode(ctx.dictionaryLiteral().getText(), "DICTIONARY"), ctx);
+        if (ctx.SELF() != null) return setLoc(new LiteralNode("self", "SELF"), ctx);
         if (ctx.expression() != null) return visit(ctx.expression());
 
         return visitChildren(ctx);
@@ -174,22 +217,41 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitCall(SwiftParser.CallContext ctx) {
-        AstNode base = visit(ctx.primary());
-        // Обробка викликів методів через крапку (self.name)
-        if (ctx.IDENTIFIER() != null && !ctx.IDENTIFIER().isEmpty()) {
-            StringBuilder accessPath = new StringBuilder();
-            if (base instanceof LiteralNode) accessPath.append(((LiteralNode) base).value);
-            for (var id : ctx.IDENTIFIER()) {
-                accessPath.append(".").append(id.getText());
+
+        AstNode result = visit(ctx.primary());
+        String name = ctx.primary().getText();
+
+        for (int i = 1; i < ctx.getChildCount(); i++) {
+            ParseTree child = ctx.getChild(i);
+
+            if (child.getText().equals("(")) {
+
+                List<AstNode> args = new ArrayList<>();
+
+                if (ctx.argumentList() != null) {
+                    for (SwiftParser.ArgumentListContext argListCtx : ctx.argumentList()) {
+                        for (SwiftParser.ExpressionContext exprCtx : argListCtx.expression()) {
+                            args.add(visit(exprCtx));
+                        }
+                    }
+                }
+
+                result = setLoc(new CallNode(name, args), ctx);
             }
-            return new LiteralNode(accessPath.toString(), "IDENTIFIER_ACCESS");
+
+            else if (child.getText().equals("[")) {
+
+                AstNode index = visit(ctx.expression(0));
+                result = setLoc(new ArrayAccessNode(result, index), ctx);
+            }
         }
-        return base;
+
+        return result;
     }
 
     @Override
     public AstNode visitBlock(SwiftParser.BlockContext ctx) {
-        ProgramNode blockNode = new ProgramNode();
+        ProgramNode blockNode = setLoc(new ProgramNode(), ctx);
         for (SwiftParser.DeclarationContext decl : ctx.declaration()) {
             AstNode node = visit(decl);
             if (node != null) blockNode.declarations.add(node);
@@ -199,7 +261,7 @@ public class AstBuilder extends SwiftParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitPrintStatement(SwiftParser.PrintStatementContext ctx) {
-        PrintNode node = new PrintNode();
+        PrintNode node = setLoc(new PrintNode(), ctx);
         if (ctx.argumentList() != null) {
             for (SwiftParser.ExpressionContext e : ctx.argumentList().expression()) {
                 node.args.add(visit(e));
