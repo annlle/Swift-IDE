@@ -2,7 +2,7 @@ package org.example.analyzer;
 
 public class Diagnostic {
 
-    public enum Severity { ERROR, WARNING }
+    public enum Severity { ERROR, WARNING } // тип серйозності
 
     private final Severity severity;
     private final String message;

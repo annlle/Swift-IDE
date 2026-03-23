@@ -37,7 +37,10 @@ public class SwiftSyntaxAnalyzer {
 
         SwiftParser.ProgramContext parseTree = parser.program();
 
-        List<String> errors = errorListener.getErrorMessages();
+        List<String> errors = new ArrayList<>();
+        for(Diagnostic diag : errorListener.getDiagnostics()) {
+            errors.add("Line " + diag.getLine() + ":" + diag.getColumn() + "-" + diag.getMessage());
+        }
 
         AstNode ast = null;
         if (errors.isEmpty()) {

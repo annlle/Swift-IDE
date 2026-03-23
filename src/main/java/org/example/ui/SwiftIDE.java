@@ -4,8 +4,12 @@ import org.example.ast.AstNode;
 import org.example.analyzer.SwiftLexicalAnalyzer;
 import org.example.analyzer.SwiftSyntaxAnalyzer;
 import org.example.analyzer.SemanticAnalyzer;
+import org.example.codegen.ASMFileWriter;
 import org.example.ir.IRGenerator;
 import org.example.ir.IRInstruction;
+import org.example.ir.IROptimizer;
+import org.example.codegen.ASMGenerator;
+import org.example.codegen.GCCCompiler;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -64,7 +68,7 @@ public class SwiftIDE extends JFrame {
     }
 
     private JPanel getButtonPanel() {
-        JPanel panel = new JPanel(new GridLayout(1, 3, 5, 5));
+        JPanel panel = new JPanel(new GridLayout(1, 4, 5, 5));
 
         JButton lexBtn = new JButton("Run lexical analysis");
         lexBtn.addActionListener(_ -> runLexicalAnalysis());
@@ -79,69 +83,16 @@ public class SwiftIDE extends JFrame {
         semBtn.setForeground(Color.WHITE);
         semBtn.addActionListener(_ -> runSemanticAnalysis());
 
+        JButton compileBtn = new JButton("Generate & Compile");
+        compileBtn.setBackground(new Color(255, 140, 0));
+        compileBtn.setForeground(Color.WHITE);
+        compileBtn.addActionListener(_ -> runCodeGenerationAndCompilation());
+
         panel.add(lexBtn);
         panel.add(synBtn);
         panel.add(semBtn);
+        panel.add(compileBtn);
         return panel;
-    }
-
-    private void runSemanticAnalysis() {
-        outputArea.setText("");
-        String code = codeArea.getText();
-        if (code.isEmpty()) return;
-
-        SwiftSyntaxAnalyzer syntaxAnalyzer = new SwiftSyntaxAnalyzer();
-        SwiftSyntaxAnalyzer.SyntaxResult syntaxResult = syntaxAnalyzer.analyze(code);
-
-        if (!syntaxResult.errors.isEmpty()) {
-            outputArea.setForeground(Color.RED);
-            outputArea.setText("Cannot run semantic analysis: Syntax errors found!\n");
-            for (String err : syntaxResult.errors) outputArea.append(err + "\n");
-            return;
-        }
-
-        if (syntaxResult.ast != null) {
-            SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
-            syntaxResult.ast.accept(semanticAnalyzer);
-
-            boolean hasErrors = !semanticAnalyzer.getErrors().isEmpty();
-            boolean hasWarnings = !semanticAnalyzer.getWarnings().isEmpty();
-
-            if(hasErrors) {
-                outputArea.setForeground(Color.RED);
-                outputArea.append("Semantic errors found:\n");
-                for(String err : semanticAnalyzer.getErrors()) {
-                    outputArea.append(err + "\n");
-                }
-            }
-
-            if(hasWarnings) {
-                outputArea.setForeground(hasErrors ? Color.RED : Color.ORANGE);
-                outputArea.append("Semantic warnings found:\n");
-
-                for (String warn : semanticAnalyzer.getWarnings()){
-                    outputArea.append(warn + "\n");
-                }
-            }
-
-            if(!hasErrors) {
-                outputArea.setForeground(new Color(0,128,0));
-                outputArea.append("Semantic analysis completed successfully.\n");
-
-                IRGenerator irGenerator = new IRGenerator();
-                syntaxResult.ast.accept(irGenerator);
-
-                List<IRInstruction> irCode = irGenerator.getInstructions();
-                if(!irCode.isEmpty()) {
-                    outputArea.append("IR Code\n");
-                    for(IRInstruction instr : irCode) {
-                        outputArea.append(instr.toString() + "\n");
-                    }
-                } else {
-                    outputArea.append("\nNo IR instructions generated.\n");
-                }
-            }
-        }
     }
 
     private void runLexicalAnalysis() {
@@ -179,6 +130,115 @@ public class SwiftIDE extends JFrame {
         }
     }
 
+    private void runSemanticAnalysis() {
+        outputArea.setText("");
+        String code = codeArea.getText();
+        if (code.isEmpty()) return;
+
+        SwiftSyntaxAnalyzer syntaxAnalyzer = new SwiftSyntaxAnalyzer();
+        SwiftSyntaxAnalyzer.SyntaxResult syntaxResult = syntaxAnalyzer.analyze(code);
+
+        if (!syntaxResult.errors.isEmpty()) {
+            outputArea.setForeground(Color.RED);
+            outputArea.setText("Cannot run semantic analysis: Syntax errors found!\n");
+            for (String err : syntaxResult.errors) outputArea.append(err + "\n");
+            return;
+        }
+
+        if (syntaxResult.ast != null) {
+            SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
+            syntaxResult.ast.accept(semanticAnalyzer);
+
+            boolean hasErrors = !semanticAnalyzer.getErrors().isEmpty();
+            boolean hasWarnings = !semanticAnalyzer.getWarnings().isEmpty();
+
+            if(hasErrors) {
+                outputArea.setForeground(Color.RED);
+                outputArea.append("Semantic errors found:\n");
+                for(String err : semanticAnalyzer.getErrors()) outputArea.append(err + "\n");
+            }
+
+            if(hasWarnings) {
+                outputArea.setForeground(hasErrors ? Color.RED : Color.ORANGE);
+                outputArea.append("Semantic warnings found:\n");
+                for (String warn : semanticAnalyzer.getWarnings()) outputArea.append(warn + "\n");
+            }
+
+            if(!hasErrors) {
+                outputArea.setForeground(new Color(0,128,0));
+                outputArea.append("Semantic analysis completed successfully.\n");
+
+                IRGenerator irGenerator = new IRGenerator();
+                syntaxResult.ast.accept(irGenerator);
+
+                List<IRInstruction> irCode = irGenerator.generate(syntaxResult.ast);
+                if(!irCode.isEmpty()) {
+                    outputArea.append("IR Code\n");
+                    for(IRInstruction instr : irCode) outputArea.append(instr.toString() + "\n");
+                } else {
+                    outputArea.append("\nNo IR instructions generated.\n");
+                }
+            }
+        }
+    }
+
+    private void runCodeGenerationAndCompilation() {
+        outputArea.setText("");
+        String code = codeArea.getText();
+        if (code.isEmpty()) return;
+
+        try {
+            // 1. Синтаксический анализ
+            SwiftSyntaxAnalyzer syntaxAnalyzer = new SwiftSyntaxAnalyzer();
+            SwiftSyntaxAnalyzer.SyntaxResult syntaxResult = syntaxAnalyzer.analyze(code);
+
+            if (!syntaxResult.errors.isEmpty()) {
+                outputArea.setForeground(Color.RED);
+                outputArea.append("Cannot generate code: Syntax errors found!\n");
+                syntaxResult.errors.forEach(err -> outputArea.append(err + "\n"));
+                return;
+            }
+
+            SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
+            syntaxResult.ast.accept(semanticAnalyzer);
+
+            if (!semanticAnalyzer.getErrors().isEmpty()) {
+                outputArea.setForeground(Color.RED);
+                outputArea.append("Cannot generate code: Semantic errors found!\n");
+                semanticAnalyzer.getErrors().forEach(err -> outputArea.append(err + "\n"));
+                return;
+            }
+
+            IRGenerator irGenerator = new IRGenerator();
+            List<IRInstruction> irCode = irGenerator.generate(syntaxResult.ast);
+
+            if (irCode.isEmpty()) {
+                outputArea.setForeground(Color.RED);
+                outputArea.append("No IR instructions generated.\n");
+                return;
+            }
+
+            irCode = IROptimizer.optimize(irCode);
+
+            String asmCode = ASMGenerator.generate(irCode);
+
+            String asmFile = "program.s";
+            ASMFileWriter.writeToFile(asmCode, asmFile);
+
+            String exeFile = "program";
+            GCCCompiler.compile(asmFile, exeFile);
+
+            outputArea.setForeground(new Color(0, 128, 0));
+            outputArea.append("Code generation and compilation finished.\n");
+            outputArea.append("Executable: " + exeFile + "\n");
+
+        } catch (Exception e) {
+            outputArea.setForeground(Color.RED);
+            outputArea.append("Error: " + e.getMessage() + "\n");
+            e.printStackTrace();
+        }
+    }
+
     private void displayAst(AstNode node) {
         if (node == null) return;
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
@@ -211,7 +271,6 @@ public class SwiftIDE extends JFrame {
             SwiftSyntaxAnalyzer.SyntaxResult result = analyzer.analyze(code);
 
             if (!result.errors.isEmpty()) {
-                System.err.println("Syntax errors found:");
                 result.errors.forEach(System.err::println);
                 return;
             }
@@ -219,29 +278,27 @@ public class SwiftIDE extends JFrame {
             SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
             result.ast.accept(semanticAnalyzer);
 
-            boolean hasErrors = !semanticAnalyzer.getErrors().isEmpty();
-            boolean hasWarnings = !semanticAnalyzer.getWarnings().isEmpty();
-
-            if (hasErrors) {
-                System.err.println("Semantic errors found:");
+            if (!semanticAnalyzer.getErrors().isEmpty()) {
                 semanticAnalyzer.getErrors().forEach(System.err::println);
+                return;
             }
 
-            if (!hasErrors) {
-                if (hasWarnings) {
-                    System.out.println("Semantic warnings:");
-                    semanticAnalyzer.getWarnings().forEach(System.out::println);
-                }
+            IRGenerator irGenerator = new IRGenerator();
+            List<IRInstruction> irCode = irGenerator.generate(result.ast);
+            irCode = IROptimizer.optimize(irCode);
 
-                IRGenerator irGenerator = new IRGenerator();
-                result.ast.accept(irGenerator);
+            String asmCode = ASMGenerator.generate(irCode);
+            String asmFile = "program.s";
+            ASMFileWriter.writeToFile(asmCode, asmFile);
 
-                System.out.println("IR Code:");
-                irGenerator.getInstructions().forEach(System.out::println);
-            }
+            String exeFile = "program";
+            GCCCompiler.compile(asmFile, exeFile);
+
+            System.out.println("Success! Code generation and compilation finished.");
+            System.out.println("Executable created: " + exeFile);
 
         } catch (Exception e) {
-            System.err.println("File error: " + e.getMessage());
+            System.err.println("Error: " + e.getMessage());
         }
     }
 

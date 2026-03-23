@@ -1,22 +1,27 @@
 package org.example.ir;
 
 public class IRInstruction {
-    private final String result;
-    private final String arg1;
     private final String op;
+    private final String arg1;
     private final String arg2;
+    private final String result;
 
-    public IRInstruction(String result, String arg1, String op, String arg2) {
-        this.result = result;
-        this.arg1 = arg1;
+    public IRInstruction(String op, String arg1, String arg2, String result) {
         this.op = op;
+        this.arg1 = arg1;
         this.arg2 = arg2;
+        this.result = result;
     }
+
+    public String getOp() { return op; }
+    public String getArg1() { return arg1; }
+    public String getArg2() { return arg2; }
+    public String getResult() { return result; }
 
     @Override
     public String toString() {
-        if (op == null) {
-            return result + " = " + arg1;
+        if (arg2 == null || arg2.isEmpty()) {
+            return result + " = " + op + " " + arg1;
         }
         return result + " = " + arg1 + " " + op + " " + arg2;
     }

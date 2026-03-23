@@ -7,8 +7,8 @@ import java.util.*;
 public class SwiftLexicalAnalyzer {
 
     public static class Result {
-        public final List<Token> tokens;
-        public final List<Diagnostic> diagnostics;
+        public final List<Token> tokens; // список токенів
+        public final List<Diagnostic> diagnostics; // список помилок
 
         public Result(List<Token> tokens, List<Diagnostic> diagnostics) {
             this.tokens = tokens;
@@ -17,22 +17,25 @@ public class SwiftLexicalAnalyzer {
     }
 
     public Result analyze(String input) {
-        CharStream stream = CharStreams.fromString(input);
+        CharStream stream = CharStreams.fromString(input); // перетворення рядка на потік символів
         SwiftLexer lexer = new SwiftLexer(stream);
 
+        // ініціалізація кастомного оброника помилок
         ErrorListener errorListener = new ErrorListener();
         lexer.removeErrorListeners();
         lexer.addErrorListener(errorListener);
 
-        CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+        CommonTokenStream tokenStream = new CommonTokenStream(lexer); // буфер токенів
         tokenStream.fill();
 
-        List<Token> tokens = tokenStream.getTokens();
-        List<Diagnostic> diagnostics = new ArrayList<>();
+        List<Token> tokens = tokenStream.getTokens(); // отримання токенів
+        List<Diagnostic> diagnostics = new ArrayList<>(); // ініціалізація списку помилок
 
+        // аналіз токенів
         for (Token t : tokens) {
             if (t.getType() == Token.EOF) break;
 
+            // обробка помилок з граматики
             switch (t.getType()) {
                 case SwiftLexer.UNCLOSED_STRING:
                     diagnostics.add(new Diagnostic(
@@ -63,15 +66,9 @@ public class SwiftLexicalAnalyzer {
             }
         }
 
+        // помилки від ANTLR
         if (errorListener.hasErrors()) {
-            for (String msg : errorListener.getErrorMessages()) {
-                diagnostics.add(new Diagnostic(
-                        Diagnostic.Severity.ERROR,
-                        msg,
-                        -1,
-                        -1
-                ));
-            }
+            diagnostics.addAll(errorListener.getDiagnostics());
         }
 
         return new Result(tokens, diagnostics);

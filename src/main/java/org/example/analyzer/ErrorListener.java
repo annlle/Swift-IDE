@@ -7,15 +7,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ErrorListener extends BaseErrorListener {
-    private final List<String> errorMessages = new ArrayList<>();
+
+    private final List<Diagnostic> diagnostics = new ArrayList<>();
+
+    private void addDiagnostic(String message, int line, int column) {
+        diagnostics.add(new Diagnostic(Diagnostic.Severity.ERROR, message, line, column));
+    }
 
     @Override
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
                             int line, int charPositionInLine,
                             String msg, RecognitionException e) {
-        errorMessages.add(String.format("Line %d:%d — %s", line, charPositionInLine, msg));
+        addDiagnostic(msg, line, charPositionInLine);
     }
 
-    public List<String> getErrorMessages() { return errorMessages; }
-    public boolean hasErrors() { return !errorMessages.isEmpty(); }
+    public List<Diagnostic> getDiagnostics() { return diagnostics; }
+
+    public boolean hasErrors() { return !diagnostics.isEmpty(); }
 }
